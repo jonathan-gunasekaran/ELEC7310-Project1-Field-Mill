@@ -56,15 +56,19 @@ gnd_z_ind = plates_z_ind + d_gnd./delta;
 % create initial voltage grid (set to zero everywhere)
 V = zeros(size(X));
 
-tvec = 0:plate_width/delta;
-% tvec = 0:plate_width/delta*2; % back and forth
+% tvec = 0:plate_width/delta;
+% movement = zeros(size(tvec));
+tvec = 0:plate_width/delta*2; % back and forth
+movement = [ones(size(plate_a_x_inds)), -ones(size(plate_b_x_inds))];  % 1 -> right; -1 -> left 
+
+prev_shutter_x_start_ind = 1; % starting point of shutter
 
 % Q(t) array for each plate
 Qa = zeros(size(tvec));
 Qb = zeros(size(tvec));
 
-% create figure for plot of voltage solution to Laplace's equation at each
-% time step
+
+% create figure for plot of voltage solution to Laplace's equation at each time step
 figure; clf;
 
 tic
@@ -91,9 +95,13 @@ for tstep_ind = 1:length(tvec)
     
     % determine time-stepped grid indices for shutter
     % assuming linear motion from one side to the next
-    shutter_x_inds = plates_x_inds(tstep_ind:tstep_ind+plate_width/delta);
+    if movement(tstep_ind) == 1
+        shutter_x_start_ind = prev_shutter_x_start_ind + 1;
+    else
+        shutter_x_start_ind = prev_shutter_x_start_ind - 1;
+    end
+    shutter_x_inds = plates_x_inds(shutter_x_start_ind:shutter_x_start_ind+plate_width/delta);
 
-    
     % tic
     iteration = 1;
     % make sure that the magnitude of the voltage different between consecutive 
@@ -131,8 +139,7 @@ for tstep_ind = 1:length(tvec)
     plot3(x(gnd_x_inds), repmat(z(gnd_z_ind), size(gnd_x_inds)), repmat(500, size(gnd_x_inds)), 'k', 'LineWidth',2);
     drawnow;
     shading interp;
-    % colormap winter;
-    colormap bone;
+    colormap winter;
     colorbar;
     view(0,90);
     pause(0.001)
@@ -142,17 +149,22 @@ for tstep_ind = 1:length(tvec)
     % evaluated at boundary between grid indices
     % Da = -epsilon0.*( V(plates_z_ind+1,plate_a_x_inds) - V(plates_z_ind,plate_a_x_inds) );
     % Db = -epsilon0.*( V(plates_z_ind+1,plate_b_x_inds) - V(plates_z_ind,plate_b_x_inds) );
-    Da = epsilon0.*( 2*V(plates_z_ind,plate_a_x_inds) - V(plates_z_ind+1,plate_a_x_inds) - V(plates_z_ind-1,plate_a_x_inds) ) + ...
-         epsilon0.*( 2*V(plates_z_ind,plate_a_x_inds) - V(plates_z_ind,plate_a_x_inds+1) - V(plates_z_ind,plate_a_x_inds-1) );
-    Db = epsilon0.*( 2*V(plates_z_ind,plate_b_x_inds) - V(plates_z_ind+1,plate_b_x_inds) - V(plates_z_ind-1,plate_b_x_inds) ) + ...
-         epsilon0.*( 2*V(plates_z_ind,plate_b_x_inds) - V(plates_z_ind,plate_b_x_inds+1) - V(plates_z_ind,plate_b_x_inds-1) );
+    Da = delta*epsilon0.*( 2*V(plates_z_ind,plate_a_x_inds) - V(plates_z_ind+1,plate_a_x_inds) - V(plates_z_ind-1,plate_a_x_inds) ) + ...
+         delta*epsilon0.*( 2*V(plates_z_ind,plate_a_x_inds) - V(plates_z_ind,plate_a_x_inds+1) - V(plates_z_ind,plate_a_x_inds-1) );
+    Db = delta*epsilon0.*( 2*V(plates_z_ind,plate_b_x_inds) - V(plates_z_ind+1,plate_b_x_inds) - V(plates_z_ind-1,plate_b_x_inds) ) + ...
+         delta*epsilon0.*( 2*V(plates_z_ind,plate_b_x_inds) - V(plates_z_ind,plate_b_x_inds+1) - V(plates_z_ind,plate_b_x_inds-1) );
+
+    % Da = delta.*epsilon0.*( V(plates_z_ind+1,plate_a_x_inds) - V(plates_z_ind-1,plate_a_x_inds) ) + ...
+    %      delta.*epsilon0.*( V(plates_z_ind,plate_a_x_inds+1) - V(plates_z_ind,plate_a_x_inds-1) );
+    % Db = delta.*epsilon0.*( V(plates_z_ind+1,plate_b_x_inds) - V(plates_z_ind-1,plate_b_x_inds) ) + ...
+    %      delta.*epsilon0.*( V(plates_z_ind,plate_b_x_inds+1) - V(plates_z_ind,plate_b_x_inds-1) );
+
 
     [Ex, Ez] = gradient(-V, delta);
-
-    % Da = epsilon0.*( - V(plates_z_ind+1,plate_a_x_inds) + V(plates_z_ind-1,plate_a_x_inds) ) + ...
-    %      epsilon0.*( - V(plates_z_ind,plate_a_x_inds+1) + V(plates_z_ind,plate_a_x_inds-1) );
-    % Db = epsilon0.*( - V(plates_z_ind+1,plate_b_x_inds) + V(plates_z_ind-1,plate_b_x_inds) ) + ...
-    %      epsilon0.*( - V(plates_z_ind,plate_b_x_inds+1) + V(plates_z_ind,plate_b_x_inds-1) );
+    Dx = epsilon0*Ex;
+    Dz = epsilon0*Ez;
+    Da = Dz(plates_z_ind, plate_a_x_inds);
+    Db = Dz(plates_z_ind, plate_b_x_inds);
 
     % integrate over the area of the plates to find the total charge
     Qa(tstep_ind) = sum(Da);
@@ -176,7 +188,10 @@ hold on;
 vel = delta;
 
 Vout_analytical = 2*vel*epsilon0*E * gain;
-plot(tvec(1:end-1), repmat(Vout_analytical,size(tvec(1:end-1))))
+Vout_analytical = movement .* Vout_analytical;
+plot(tvec, repmat(Vout_analytical,size(tvec)));
+
+xlabel("Time Step (t)")
 
 
 %% Comparison
