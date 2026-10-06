@@ -2,14 +2,22 @@
 % Jonathan Gunasekaran
 % 2026/09/19
 
+% TODO:
+% - plot E as quiver
+% - show diff in E between analytical and numerical along sense plates axis
+% - show variation as d increases, maybe also as A decreases if time allows
+% - adjust plate indexes so gap between plates
+% - initial condition ground the sense plates
+% - [DONE] back and forth motion
+
 clear all;
 
 % Constants
 epsilon0 = 8.854e-12; % permittivity of free-space
 E = 100;              % static E field of 100 V/m
 
-% numerical iteration until voltage converges
-convergence_bound = 0.005;
+% numerical iteration until voltage converges to within preset tolerance bound
+convergence_bound = 0.05;
 
 
 %% 2D Numerical Simulation of Laplace's Equation
@@ -71,7 +79,7 @@ Qb = zeros(size(tvec));
 
 
 % create figure for plot of voltage solution to Laplace's equation at each time step
-figure; clf;
+field_mill_movie_fig = figure; clf;
 
 tic
 % compute time-stepped shutter grid indices
@@ -81,12 +89,17 @@ for tstep_ind = 1:length(tvec)
     prev_V = zeros(size(V));
 
     % define initial condition
-    % at t=0, assume initial voltage has gradient that is uniform in z across entire simulation space
-    % otherwise, just start with solution from previous time step (should minimize convergence time)
-    if tstep_ind == 1
-        V = repmat((z.*E).', size(z,1), size(x,2));
-    end
-    % V = repmat((z.*E).', size(z,1), size(x,2));
+    % assume initial solution is uniform gradient for each shutter position
+    % (iterate until Laplace's equation converges to within tolerance criteria)
+    V = repmat((z.*E).', size(z,1), size(x,2));
+
+    % at t=0, assume initial voltage has gradient that is uniform in z
+    % across entire simulation space; otherwise, just start with solution
+    % from previous time step (should minimize convergence time) 
+    % -->  DOES NOT WORK FOR WHATEVER REASON
+    % if tstep_ind == 1
+    %     V = repmat((z.*E).', size(z,1), size(x,2));
+    % end
     
     % enforce boundary condition values at edges of simulation space
     % x is column, z is row
@@ -95,9 +108,12 @@ for tstep_ind = 1:length(tvec)
     V(:,1) = z.*E;               % sides of sim space are held at fixed gradient values
     V(:,end) = z.*E;
     
-
+    % ground sense plates through pull-down at start of evaluation of
+    % Laplace's equation (not force set throughout iteration)
+    
+    
     % determine time-stepped grid indices for shutter
-    disp(shutter_x_start_ind);
+    % disp(shutter_x_start_ind);
     shutter_x_inds = plates_x_inds(shutter_x_start_ind:shutter_x_start_ind+plate_width/delta);
 
     % tic
@@ -126,15 +142,18 @@ for tstep_ind = 1:length(tvec)
     end
     % toc
 
+
+    % plot movie of scalar voltage as shutter moves back and forth
+    figure(field_mill_movie_fig);
     % imagesc(x,z,V);
     % scatter3(X(:),Z(:),V(:),[],V(:),"filled");
     surf(X,Z,V);
-    % contour(X,Z,V);
+    % contour(X,Z,V,50);
     hold on;
     plot3(x(shutter_x_inds), repmat(z(shutter_z_ind), size(shutter_x_inds)), repmat(500, size(shutter_x_inds)), 'r', 'LineWidth',2);
-    plot3(x(plate_a_x_inds), repmat(z(plates_z_ind), size(plate_a_x_inds)), repmat(500, size(plate_a_x_inds)), 'g', 'LineWidth',2);
+    plot3(x(plate_a_x_inds), repmat(z(plates_z_ind), size(plate_a_x_inds)), repmat(500, size(plate_a_x_inds)), 'y', 'LineWidth',2);
     plot3(x(plate_b_x_inds), repmat(z(plates_z_ind), size(plate_b_x_inds)), repmat(500, size(plate_b_x_inds)), 'm', 'LineWidth',2);    
-    plot3(x(gnd_x_inds), repmat(z(gnd_z_ind), size(gnd_x_inds)), repmat(500, size(gnd_x_inds)), 'k', 'LineWidth',2);
+    plot3(x(gnd_x_inds), repmat(z(gnd_z_ind), size(gnd_x_inds)), repmat(500, size(gnd_x_inds)), 'w', 'LineWidth',2);
     drawnow;
     shading interp;
     colormap winter;
@@ -147,21 +166,25 @@ for tstep_ind = 1:length(tvec)
     % evaluated at boundary between grid indices
     % Da = -epsilon0.*( V(plates_z_ind+1,plate_a_x_inds) - V(plates_z_ind,plate_a_x_inds) );
     % Db = -epsilon0.*( V(plates_z_ind+1,plate_b_x_inds) - V(plates_z_ind,plate_b_x_inds) );
-    Da = delta*epsilon0.*( 2*V(plates_z_ind,plate_a_x_inds) - V(plates_z_ind+1,plate_a_x_inds) - V(plates_z_ind-1,plate_a_x_inds) ) + ...
-         delta*epsilon0.*( 2*V(plates_z_ind,plate_a_x_inds) - V(plates_z_ind,plate_a_x_inds+1) - V(plates_z_ind,plate_a_x_inds-1) );
-    Db = delta*epsilon0.*( 2*V(plates_z_ind,plate_b_x_inds) - V(plates_z_ind+1,plate_b_x_inds) - V(plates_z_ind-1,plate_b_x_inds) ) + ...
-         delta*epsilon0.*( 2*V(plates_z_ind,plate_b_x_inds) - V(plates_z_ind,plate_b_x_inds+1) - V(plates_z_ind,plate_b_x_inds-1) );
+    Da = epsilon0.*( 2*V(plates_z_ind,plate_a_x_inds) - V(plates_z_ind+1,plate_a_x_inds) - V(plates_z_ind-1,plate_a_x_inds) ) + ...
+         epsilon0.*( 2*V(plates_z_ind,plate_a_x_inds) - V(plates_z_ind,plate_a_x_inds+1) - V(plates_z_ind,plate_a_x_inds-1) );
+    Db = epsilon0.*( 2*V(plates_z_ind,plate_b_x_inds) - V(plates_z_ind+1,plate_b_x_inds) - V(plates_z_ind-1,plate_b_x_inds) ) + ...
+         epsilon0.*( 2*V(plates_z_ind,plate_b_x_inds) - V(plates_z_ind,plate_b_x_inds+1) - V(plates_z_ind,plate_b_x_inds-1) );
+    
+    % scale factor for plate area since only doing simulation in 2D
+    Da = delta.*Da;
+    Db = delta.*Db;
 
     % Da = delta.*epsilon0.*( V(plates_z_ind+1,plate_a_x_inds) - V(plates_z_ind-1,plate_a_x_inds) ) + ...
     %      delta.*epsilon0.*( V(plates_z_ind,plate_a_x_inds+1) - V(plates_z_ind,plate_a_x_inds-1) );
     % Db = delta.*epsilon0.*( V(plates_z_ind+1,plate_b_x_inds) - V(plates_z_ind-1,plate_b_x_inds) ) + ...
     %      delta.*epsilon0.*( V(plates_z_ind,plate_b_x_inds+1) - V(plates_z_ind,plate_b_x_inds-1) );
 
-    [Ex, Ez] = gradient(-V, delta);
-    Dx = epsilon0*Ex;
-    Dz = epsilon0*Ez;
-    Da = Dz(plates_z_ind, plate_a_x_inds);
-    Db = Dz(plates_z_ind, plate_b_x_inds);
+    % [Ex, Ez] = gradient(-V, delta);
+    % Dx = epsilon0*Ex;
+    % Dz = epsilon0*Ez;
+    % Da = Dz(plates_z_ind, plate_a_x_inds);
+    % Db = Dz(plates_z_ind, plate_b_x_inds);
 
     % integrate over the area of the plates to find the total charge
     Qa(tstep_ind) = sum(Da);
@@ -182,13 +205,28 @@ toc
 
 I_diff = diff(Qb) - diff(Qa);
 
-% time vector is arbitrary
+% time vector is arbitrary (uniform time step)
+% gain is arbitrary
 gain = 1e10;
 Vout_numerical = gain.*I_diff;
 
-figure; clf;
-plot(tvec(1:end-1), Vout_numerical);
+
+% create plot for charge on the two plates as a function of time
+q_fig = figure; clf;
+xlabel("Time Step (t)");
+ylabel("Relative Q (C)");
+plot(tvec, Qa*gain, 'DisplayName', 'relative Qa');
 hold on;
+plot(tvec, Qb*gain, 'DisplayName', 'relative Qb');
+
+% create plot for output voltage from transimpedance amplifier
+vout_fig = figure; clf;
+xlabel("Time Step (t)")
+ylabel("Relative V_{out}")
+
+plot(tvec(1:end-1), Vout_numerical, 'DisplayName','V_{numerical}', 'LineWidth',2);
+hold on;
+
 
 
 %% Analytical Solution for Amplifier Output
@@ -197,9 +235,11 @@ vel = delta;
 Vout_analytical = 2*vel*epsilon0*E * gain;
 Vout_analytical = Vout_analytical / delta;
 Vout_analytical = movement .* Vout_analytical;
-plot(tvec(1:end-1), Vout_analytical);
 
-xlabel("Time Step (t)")
+% add analytical solution to voltage plot
+figure(vout_fig);
+plot(tvec(1:end-1), Vout_analytical, 'DisplayName','V_{analytical}', 'LineWidth',2);
+hold on;
 
 
 %% Comparison
