@@ -6,6 +6,9 @@
 epsilon0 = 8.854e-12; % permittivity of free-space
 E = 100;              % static E field of 100 V/m
 
+% numerical iteration until voltage converges
+convergence_bound = 0.01;
+
 
 %% 2D Numerical Simulation of Laplace's Equation
 % spatial step delta (meters) --> if constant velocity, essentially equal to v
@@ -25,8 +28,10 @@ z = lower_limit:delta:upper_limit;
 % place plates at center of simulation space
 % assume the area of each sense plate to be 10cm x 10cm
 center_sim_space = (lower_limit + upper_limit) / 2;
-plate_width = 0.1; % meters
-plates_x_inds = find( abs(x-center_sim_space) <= plate_width ); % any points 1m away from center in space along x-axis
+plate_width = 0.40; % meters
+
+float_point_tol = 1e-10;
+plates_x_inds = find( abs(x-center_sim_space) <= plate_width + float_point_tol); % any points 1m away from center in space along x-axis
 plates_z_ind = floor(length(z)/2);
 % plates_z_ind = 100;
 
@@ -39,6 +44,10 @@ plate_b_x_inds = plates_x_inds(floor(end/2)+1:end);
 d = 0.02; % meters
 shutter_z_ind = plates_z_ind + d./delta;
 
+% determine grid indices for bottom gnd plane
+d_gnd = -0.01;
+gnd_x_inds = plates_x_inds;
+gnd_z_ind = plates_z_ind + d_gnd./delta;
 
 % shutter_x_ind = find( x-center_sim_space <= 0 & x-center_sim_space > -plate_width ); 
 
@@ -71,6 +80,7 @@ for tstep_ind = 1:length(tvec)
     if tstep_ind == 1
         V = repmat((z.*E).', size(z,1), size(x,2));
     end
+    % V = repmat((z.*E).', size(z,1), size(x,2));
     
     % enforce boundary condition values at edges of simulation space
     % x is column, z is row
@@ -82,10 +92,7 @@ for tstep_ind = 1:length(tvec)
     % determine time-stepped grid indices for shutter
     % assuming linear motion from one side to the next
     shutter_x_inds = plates_x_inds(tstep_ind:tstep_ind+plate_width/delta);
-    
 
-    % numerical iteration until voltage converges
-    convergence_bound = 0.01;
     
     % tic
     iteration = 1;
@@ -107,6 +114,7 @@ for tstep_ind = 1:length(tvec)
     
         % ground shutter plate positions (force set to zero voltage)
         V(shutter_z_ind, shutter_x_inds) = 0;
+        V(gnd_z_ind, gnd_x_inds) = 0;
     
         iteration = iteration + 1;
     end
@@ -115,15 +123,19 @@ for tstep_ind = 1:length(tvec)
     % imagesc(x,z,V);
     % scatter3(X(:),Z(:),V(:),[],V(:),"filled");
     surf(X,Z,V);
+    % contour(X,Z,V);
     hold on;
     plot3(x(shutter_x_inds), repmat(z(shutter_z_ind), size(shutter_x_inds)), repmat(500, size(shutter_x_inds)), 'r', 'LineWidth',2);
     plot3(x(plate_a_x_inds), repmat(z(plates_z_ind), size(plate_a_x_inds)), repmat(500, size(plate_a_x_inds)), 'g', 'LineWidth',2);
-    plot3(x(plate_b_x_inds), repmat(z(plates_z_ind), size(plate_b_x_inds)), repmat(500, size(plate_b_x_inds)), 'y', 'LineWidth',2);
+    plot3(x(plate_b_x_inds), repmat(z(plates_z_ind), size(plate_b_x_inds)), repmat(500, size(plate_b_x_inds)), 'm', 'LineWidth',2);    
+    plot3(x(gnd_x_inds), repmat(z(gnd_z_ind), size(gnd_x_inds)), repmat(500, size(gnd_x_inds)), 'k', 'LineWidth',2);
     drawnow;
     shading interp;
+    % colormap winter;
+    colormap bone;
     colorbar;
     view(0,90);
-    pause(0.01)
+    pause(0.001)
     hold off;
 
     % get flux density from voltage at sense plate grid indices
@@ -135,6 +147,13 @@ for tstep_ind = 1:length(tvec)
     Db = epsilon0.*( 2*V(plates_z_ind,plate_b_x_inds) - V(plates_z_ind+1,plate_b_x_inds) - V(plates_z_ind-1,plate_b_x_inds) ) + ...
          epsilon0.*( 2*V(plates_z_ind,plate_b_x_inds) - V(plates_z_ind,plate_b_x_inds+1) - V(plates_z_ind,plate_b_x_inds-1) );
 
+    [Ex, Ez] = gradient(-V, delta);
+
+    % Da = epsilon0.*( - V(plates_z_ind+1,plate_a_x_inds) + V(plates_z_ind-1,plate_a_x_inds) ) + ...
+    %      epsilon0.*( - V(plates_z_ind,plate_a_x_inds+1) + V(plates_z_ind,plate_a_x_inds-1) );
+    % Db = epsilon0.*( - V(plates_z_ind+1,plate_b_x_inds) + V(plates_z_ind-1,plate_b_x_inds) ) + ...
+    %      epsilon0.*( - V(plates_z_ind,plate_b_x_inds+1) + V(plates_z_ind,plate_b_x_inds-1) );
+
     % integrate over the area of the plates to find the total charge
     Qa(tstep_ind) = sum(Da);
     Qb(tstep_ind) = sum(Db);
@@ -142,19 +161,22 @@ for tstep_ind = 1:length(tvec)
 end
 toc
 
-
-I_diff = diff(Qa) - diff(Qb);
+I_diff = diff(Qb) - diff(Qa);
 
 % time vector is arbitrary
-R = 1;
-Vout_numerical = R*I_diff;
+gain = 1e10;
+Vout_numerical = gain.*I_diff;
 
 figure; clf;
-plot(Vout_numerical);
+plot(tvec(1:end-1), Vout_numerical);
+hold on;
 
 
 %% Analytical Solution for Amplifier Output
+vel = delta;
 
+Vout_analytical = 2*vel*epsilon0*E * gain;
+plot(tvec(1:end-1), repmat(Vout_analytical,size(tvec(1:end-1))))
 
 
 %% Comparison
