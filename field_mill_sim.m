@@ -2,12 +2,14 @@
 % Jonathan Gunasekaran
 % 2026/09/19
 
+clear all;
+
 % Constants
 epsilon0 = 8.854e-12; % permittivity of free-space
 E = 100;              % static E field of 100 V/m
 
 % numerical iteration until voltage converges
-convergence_bound = 0.01;
+convergence_bound = 0.005;
 
 
 %% 2D Numerical Simulation of Laplace's Equation
@@ -41,11 +43,11 @@ plate_b_x_inds = plates_x_inds(floor(end/2)+1:end);
 
 % determine grid indices for shutter 
 % set distance between shutter and sense plates
-d = 0.02; % meters
+d = 0.04; % meters
 shutter_z_ind = plates_z_ind + d./delta;
 
 % determine grid indices for bottom gnd plane
-d_gnd = -0.01;
+d_gnd = -0.02;
 gnd_x_inds = plates_x_inds;
 gnd_z_ind = plates_z_ind + d_gnd./delta;
 
@@ -59,9 +61,9 @@ V = zeros(size(X));
 % tvec = 0:plate_width/delta;
 % movement = zeros(size(tvec));
 tvec = 0:plate_width/delta*2; % back and forth
-movement = [ones(size(plate_a_x_inds)), -ones(size(plate_b_x_inds))];  % 1 -> right; -1 -> left 
+movement = [diff(plate_a_x_inds), -diff(plate_a_x_inds)];  % 1 -> right; -1 -> left 
 
-prev_shutter_x_start_ind = 1; % starting point of shutter
+shutter_x_start_ind = 1; % starting point of shutter
 
 % Q(t) array for each plate
 Qa = zeros(size(tvec));
@@ -93,13 +95,9 @@ for tstep_ind = 1:length(tvec)
     V(:,1) = z.*E;               % sides of sim space are held at fixed gradient values
     V(:,end) = z.*E;
     
+
     % determine time-stepped grid indices for shutter
-    % assuming linear motion from one side to the next
-    if movement(tstep_ind) == 1
-        shutter_x_start_ind = prev_shutter_x_start_ind + 1;
-    else
-        shutter_x_start_ind = prev_shutter_x_start_ind - 1;
-    end
+    disp(shutter_x_start_ind);
     shutter_x_inds = plates_x_inds(shutter_x_start_ind:shutter_x_start_ind+plate_width/delta);
 
     % tic
@@ -159,7 +157,6 @@ for tstep_ind = 1:length(tvec)
     % Db = delta.*epsilon0.*( V(plates_z_ind+1,plate_b_x_inds) - V(plates_z_ind-1,plate_b_x_inds) ) + ...
     %      delta.*epsilon0.*( V(plates_z_ind,plate_b_x_inds+1) - V(plates_z_ind,plate_b_x_inds-1) );
 
-
     [Ex, Ez] = gradient(-V, delta);
     Dx = epsilon0*Ex;
     Dz = epsilon0*Ez;
@@ -170,6 +167,16 @@ for tstep_ind = 1:length(tvec)
     Qa(tstep_ind) = sum(Da);
     Qb(tstep_ind) = sum(Db);
 
+
+    % assuming linear motion from one side to the next
+    % update start index of shutter for next iteration
+    if tstep_ind ~= length(tvec)
+        if movement(tstep_ind) == 1
+            shutter_x_start_ind = shutter_x_start_ind + 1;
+        else
+            shutter_x_start_ind = shutter_x_start_ind - 1;
+        end
+    end
 end
 toc
 
@@ -188,8 +195,9 @@ hold on;
 vel = delta;
 
 Vout_analytical = 2*vel*epsilon0*E * gain;
+Vout_analytical = Vout_analytical / delta;
 Vout_analytical = movement .* Vout_analytical;
-plot(tvec, repmat(Vout_analytical,size(tvec)));
+plot(tvec(1:end-1), Vout_analytical);
 
 xlabel("Time Step (t)")
 
