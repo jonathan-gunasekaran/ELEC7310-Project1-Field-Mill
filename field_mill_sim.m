@@ -45,7 +45,7 @@ plate_width = 0.20; % meters
 % any points along x-axis that are within "plate_width" distance away from center grid index
 float_point_tol_indexing = 1e-10;
 sense_x_inds = find( abs(x-center_sim_space) <= plate_width + float_point_tol_indexing);
-sense_z_ind = floor(length(z)/2);
+sense_z_ind = floor(length(z)/2)+1;
 
 % get grid indices for each individual plate
 sense_a_x_inds = sense_x_inds(1:floor(end/2)+1);
@@ -53,13 +53,18 @@ sense_b_x_inds = sense_x_inds(floor(end/2)+1:end);
 
 % determine grid indices for shutter 
 % set distance between shutter and sense plates
-dz_shutter = 0.04; % meters
+dz_shutter = 0.2; % meters
 shutter_z_ind = sense_z_ind + dz_shutter./delta_xyz;
 
 % determine grid indices for bottom gnd plane
-dz_gnd = -0.02;
+dz_gnd = -0.04;
 gnd_x_inds = sense_x_inds;
 gnd_z_ind = sense_z_ind + dz_gnd./delta_xyz;
+
+% shift up so gnd plane is at center z index
+gnd_z_ind = gnd_z_ind - dz_gnd./delta_xyz;
+shutter_z_ind = shutter_z_ind - dz_gnd./delta_xyz;
+sense_z_ind = sense_z_ind - dz_gnd./delta_xyz;
 
 
 %-----------------------------------------------------------------------
@@ -121,8 +126,8 @@ for tstep_ind = 1:length(tvec)
     
     % enforce boundary condition values at edges of simulation space
     % x is column, z is row
-    V(1,:) = 0;                  % bottom of sim space is grounded
-    V(end,:) = upper_spatial_limit * E;  % top of sim space is held at fixed potential
+    V(1,:) = lower_spatial_limit * E;   % bottom of sim space is held at fixed potential
+    V(end,:) = upper_spatial_limit * E; % top of sim space is held at fixed potential
     V(:,1) = z.*E;               % sides of sim space are held at fixed gradient values
     V(:,end) = z.*E;
     
@@ -178,7 +183,7 @@ for tstep_ind = 1:length(tvec)
     % scatter3(X(:),Z(:),V(:),[],V(:),"filled");
     % surf(X,Z,V);
     V_level_diff = 20; % voltage difference between adjacent equipotential lines
-    equiV_levels = lower_spatial_limit:V_level_diff:upper_spatial_limit*E;
+    equiV_levels = lower_spatial_limit*E:V_level_diff:upper_spatial_limit*E;
     contour(X,Z,V,equiV_levels);
     hold on;
     quiver(X,Z,Ex,Ez);
