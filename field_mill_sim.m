@@ -7,7 +7,6 @@
 % - show diff in E between analytical and numerical along sense plates axis
 % - show variation as d increases, maybe also as A decreases if time allows
 % - truncate plot space to just show field around sense plates
-% - [DONE] initial condition ground the sense plates
 
 clear all;
 
@@ -17,7 +16,7 @@ E = 100;              % static E field of 100 V/m
 
 % Simulation Options
 % numerical iteration until voltage converges to within preset tolerance bound
-convergence_bound = 0.01;
+convergence_bound = 0.05;
 sim_full_cycle = 1;  % if set, move shutter right and left over full cycle; otherwise, only half cycle
 
 
@@ -54,16 +53,16 @@ sense_b_x_inds = sense_x_inds(floor(end/2)+1:end);
 
 % determine grid indices for shutter 
 % set distance between shutter and sense plates
-dz_shutter = 0.02; % meters
+dz_shutter = 0.04; % meters
 shutter_z_ind = sense_z_ind + dz_shutter./delta_xyz;
 
 % determine grid indices for bottom gnd plane
-dz_gnd = -0.01;
+dz_gnd = -0.02;
 gnd_x_inds = sense_x_inds;
 gnd_z_ind = sense_z_ind + dz_gnd./delta_xyz;
 
 
-%--------------------------------------------------------------------------
+%-----------------------------------------------------------------------
 % create initial voltage grid (set to zero everywhere)
 V = zeros(size(X));
 
@@ -88,6 +87,10 @@ Qb = zeros(size(tvec));
 
 % create figure for movie plot of voltage solution to Laplace's equation at each time step
 field_mill_movie_fig = figure; clf;
+movie_x_inds = find( abs(x-center_sim_space) <= 2*plate_width + float_point_tol_indexing);
+movie_z_inds = find( abs(z-center_sim_space) <= 2*plate_width + float_point_tol_indexing);
+movie_x_bounds = x([movie_x_inds(1), movie_x_inds(end)]);
+movie_z_bounds = z([movie_z_inds(1), movie_z_inds(end)]);
 
 tic
 % compute time-stepped shutter grid indices
@@ -151,55 +154,69 @@ for tstep_ind = 1:length(tvec)
     end
     % toc
 
-
     [Ex, Ez] = gradient(-V, delta_xyz);
     % Dx = epsilon0*Ex;
     % Dz = epsilon0*Ez;
-    % Da = Dz(plates_z_ind, plate_a_x_inds);
-    % Db = Dz(plates_z_ind, plate_b_x_inds);
+    % Da = Dz(sense_z_ind, sense_a_x_inds);
+    % Db = Dz(sense_z_ind, sense_b_x_inds);
+    % Da_dot_ds = Da * delta_xyz.^2;
+    % Db_dot_ds = Db * delta_xyz.^2;
 
+
+    %-------------------------------------------------------------------
     % plot movie of scalar voltage as shutter moves back and forth
     figure(field_mill_movie_fig);
     axis equal;
     % imagesc(x,z,V);
     % scatter3(X(:),Z(:),V(:),[],V(:),"filled");
     % surf(X,Z,V);
-    V_level_diff = 20;
+    V_level_diff = 20; % voltage difference between adjacent equipotential lines
     equiV_levels = lower_spatial_limit:V_level_diff:upper_spatial_limit*E;
     contour(X,Z,V,equiV_levels);
-    % quiver(X,Z,Ex,Ez);
     hold on;
-    plot3(x(shutter_x_inds), repmat(z(shutter_z_ind), size(shutter_x_inds)), repmat(500, size(shutter_x_inds)), 'r', 'LineWidth',2);
-    plot3(x(sense_a_x_inds), repmat(z(sense_z_ind), size(sense_a_x_inds)), repmat(500, size(sense_a_x_inds)), 'y', 'LineWidth',2);
+    quiver(X,Z,Ex,Ez);
+    plot3(x(shutter_x_inds), repmat(z(shutter_z_ind), size(shutter_x_inds)), repmat(500, size(shutter_x_inds)), 'k', 'LineWidth',2);
+    plot3(x(sense_a_x_inds), repmat(z(sense_z_ind), size(sense_a_x_inds)), repmat(500, size(sense_a_x_inds)), 'r', 'LineWidth',2);
     plot3(x(sense_b_x_inds), repmat(z(sense_z_ind), size(sense_b_x_inds)), repmat(500, size(sense_b_x_inds)), 'm', 'LineWidth',2);    
     plot3(x(gnd_x_inds), repmat(z(gnd_z_ind), size(gnd_x_inds)), repmat(500, size(gnd_x_inds)), 'k', 'LineWidth',2);
+    
+    xlim(movie_x_bounds);
+    ylim(movie_z_bounds);
+    xlabel("x (m)");
+    xlabel("z (m)");
+    title("Potential Evolution over Time for 2D Cross Section")
     drawnow;
     shading interp;
     colormap winter;
+    % colormap sky;
+    % colormap bone;
     colorbar;
     view(0,90);
     pause(0.001)
     hold off;
+    %-------------------------------------------------------------------
 
-    % get flux density from voltage at sense plate grid indices
-    % negative gradient of voltage evaluated at boundary between grid indices
-    % testing with only top face of sense plates
-    % Da = -epsilon0.*( V(plates_z_ind+1,plate_a_x_inds) - V(plates_z_ind,plate_a_x_inds) );
-    % Db = -epsilon0.*( V(plates_z_ind+1,plate_b_x_inds) - V(plates_z_ind,plate_b_x_inds) );
-    
-    % evaluate gradient for all boundaries of grid cell (closed surface integral)
-    Da = epsilon0.*( 2*V(sense_z_ind,sense_a_x_inds) - V(sense_z_ind+1,sense_a_x_inds) - V(sense_z_ind-1,sense_a_x_inds) ) + ...
-         epsilon0.*( 2*V(sense_z_ind,sense_a_x_inds) - V(sense_z_ind,sense_a_x_inds+1) - V(sense_z_ind,sense_a_x_inds-1) );
-    Db = epsilon0.*( 2*V(sense_z_ind,sense_b_x_inds) - V(sense_z_ind+1,sense_b_x_inds) - V(sense_z_ind-1,sense_b_x_inds) ) + ...
-         epsilon0.*( 2*V(sense_z_ind,sense_b_x_inds) - V(sense_z_ind,sense_b_x_inds+1) - V(sense_z_ind,sense_b_x_inds-1) );
-    
+
+    % % get flux density from voltage at sense plate grid indices - 
+    % % evaluate negative gradient of voltage at all boundaries (between 
+    % % grid indices) of each grid cell --> closed surface integral
+    Da_dot_ds = epsilon0.*( 2*V(sense_z_ind,sense_a_x_inds) - V(sense_z_ind+1,sense_a_x_inds) - V(sense_z_ind-1,sense_a_x_inds) ) + ...
+                epsilon0.*( 2*V(sense_z_ind,sense_a_x_inds) - V(sense_z_ind,sense_a_x_inds+1) - V(sense_z_ind,sense_a_x_inds-1) );
+    Db_dot_ds = epsilon0.*( 2*V(sense_z_ind,sense_b_x_inds) - V(sense_z_ind+1,sense_b_x_inds) - V(sense_z_ind-1,sense_b_x_inds) ) + ...
+                epsilon0.*( 2*V(sense_z_ind,sense_b_x_inds) - V(sense_z_ind,sense_b_x_inds+1) - V(sense_z_ind,sense_b_x_inds-1) );
+
+    % Da_dot_ds = epsilon0.*( -V(sense_z_ind+1,sense_a_x_inds) + V(sense_z_ind-1,sense_a_x_inds) ) + ...
+    %             epsilon0.*( -V(sense_z_ind,sense_a_x_inds+1) + V(sense_z_ind,sense_a_x_inds-1) );
+    % Db_dot_ds = epsilon0.*( -V(sense_z_ind+1,sense_b_x_inds) + V(sense_z_ind-1,sense_b_x_inds) ) + ...
+    %             epsilon0.*( -V(sense_z_ind,sense_b_x_inds+1) + V(sense_z_ind,sense_b_x_inds-1) );
+
     % scale factor for plate area since only doing simulation in 2D
-    Da = delta_xyz.*Da;
-    Db = delta_xyz.*Db;
+    % Da_dot_ds = delta_xyz.*Da_dot_ds;
+    % Db_dot_ds = delta_xyz.*Db_dot_ds;
 
     % integrate over the area of the plates to find the total charge
-    Qa(tstep_ind) = sum(Da);
-    Qb(tstep_ind) = sum(Db);
+    Qa(tstep_ind) = sum(Da_dot_ds);
+    Qb(tstep_ind) = sum(Db_dot_ds);
 
 
     % update start index of shutter for next iteration
@@ -218,39 +235,40 @@ I_diff = diff(Qb) - diff(Qa);
 
 % time vector is arbitrary (uniform time step)
 % gain is arbitrary
-gain = 1e10;
+gain = 1e13;
 Vout_numerical = gain.*I_diff;
 
 
 % create plot for charge on the two plates as a function of time
 q_fig = figure; clf;
-xlabel("Time Step (t)");
-ylabel("Relative Q (C)");
-plot(tvec, Qa*gain, 'DisplayName', 'relative Qa');
+plot(tvec, Qa*gain, 'DisplayName', 'Qa');
 hold on;
-plot(tvec, Qb*gain, 'DisplayName', 'relative Qb');
+plot(tvec, Qb*gain, 'DisplayName', 'Qb');
+
+xlabel("Time Step (t)");
+ylabel("Relative Charge (C)");
+legend;
 
 % create plot for output voltage from transimpedance amplifier
 vout_fig = figure; clf;
-xlabel("Time Step (t)")
-ylabel("Relative V_{out}")
-
-plot(tvec(1:end-1), Vout_numerical, 'DisplayName','V_{numerical}', 'LineWidth',2);
+plot(tvec(1:end-1), Vout_numerical, 'DisplayName','Numerical', 'LineWidth',2);
 hold on;
 
+xlabel("Time Step (t)");
+ylabel("Relative V_{out}");
 
 
 %% Analytical Solution for Amplifier Output
 vel = delta_xyz./delta_t;
 
 Vout_analytical = 2*vel*epsilon0*E * gain;
-Vout_analytical = Vout_analytical * delta_xyz; % account for 2D simulation - depth factor for area
-Vout_analytical = movement .* Vout_analytical;
+% Vout_analytical = Vout_analytical * delta_xyz; % account for 2D simulation - depth factor for area
+Vout_analytical = movement .* Vout_analytical; % sign of Ib - Ia depends on movement direction of shutter
 
 % add analytical solution to voltage plot
 figure(vout_fig);
-plot(tvec(1:end-1), Vout_analytical, 'DisplayName','V_{analytical}', 'LineWidth',2);
-hold on;
+plot(tvec(1:end-1), Vout_analytical, '- ', 'DisplayName','Analytical', 'LineWidth',2);
+legend;
 
 
 %% Comparison
