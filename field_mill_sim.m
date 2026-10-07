@@ -18,7 +18,7 @@ E = 100;              % static E field of 100 V/m
 % numerical iteration until voltage converges to within preset tolerance bound
 convergence_bound = 0.05;
 sim_full_cycle = 1;  % if set, move shutter right and left over full cycle; otherwise, only half cycle
-zoom_in_movie = 1
+zoom_in_movie = 1;
 
 %% 2D Numerical Simulation of Laplace's Equation
 % spatial step delta (meters)
@@ -92,10 +92,12 @@ Qb = zeros(size(tvec));
 
 % create figure for movie plot of voltage solution to Laplace's equation at each time step
 field_mill_movie_fig = figure; clf;
-movie_x_inds = find( abs(x-center_sim_space) <= 2*plate_width + float_point_tol_indexing);
-movie_z_inds = find( abs(z-center_sim_space) <= 2*plate_width + float_point_tol_indexing);
-movie_x_bounds = x([movie_x_inds(1), movie_x_inds(end)]);
-movie_z_bounds = z([movie_z_inds(1), movie_z_inds(end)]);
+if zoom_in_movie
+    movie_x_inds = find( abs(x-center_sim_space) <= 2*plate_width + float_point_tol_indexing);
+    movie_z_inds = find( abs(z-center_sim_space) <= 2*plate_width + float_point_tol_indexing);
+    movie_x_bounds = x([movie_x_inds(1), movie_x_inds(end)]);
+    movie_z_bounds = z([movie_z_inds(1), movie_z_inds(end)]);
+end
 
 tic
 % compute time-stepped shutter grid indices
@@ -185,8 +187,10 @@ for tstep_ind = 1:length(tvec)
     plot3(x(sense_b_x_inds), repmat(z(sense_z_ind), size(sense_b_x_inds)), repmat(500, size(sense_b_x_inds)), 'g', 'LineWidth',2);    
     plot3(x(gnd_x_inds), repmat(z(gnd_z_ind), size(gnd_x_inds)), repmat(500, size(gnd_x_inds)), 'k', 'LineWidth',2);
     
-    xlim(movie_x_bounds);
-    ylim(movie_z_bounds);
+    if zoom_in_movie
+        xlim(movie_x_bounds);
+        ylim(movie_z_bounds);
+    end
     xlabel("x (m)");
     xlabel("z (m)");
     title("Potential Evolution over Time for 2D Cross Section")
