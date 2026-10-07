@@ -3,10 +3,10 @@
 % 2026/09/19
 
 % TODO:
-% - plot E as quiver
+% - [DONE] plot E as quiver
 % - show diff in E between analytical and numerical along sense plates axis
-% - show variation as d increases, maybe also as A decreases if time allows
-% - truncate plot space to just show field around sense plates
+% - show variation as d increases, maybe also as A decreases if time allows (time does not allow)
+% - [DONE] truncate plot space to just show field around sense plates
 
 clear all;
 
@@ -18,7 +18,7 @@ E = 100;              % static E field of 100 V/m
 % numerical iteration until voltage converges to within preset tolerance bound
 convergence_bound = 0.05;
 sim_full_cycle = 1;  % if set, move shutter right and left over full cycle; otherwise, only half cycle
-
+zoom_in_movie = 1
 
 %% 2D Numerical Simulation of Laplace's Equation
 % spatial step delta (meters)
@@ -83,6 +83,11 @@ shutter_x_start_ind = 1; % starting point of shutter
 % Q(t) array for each plate
 Qa = zeros(size(tvec));
 Qb = zeros(size(tvec));
+
+
+% store E-field at start and middle of shutter movement for comparison
+% against analytical assumptions
+
 
 
 % create figure for movie plot of voltage solution to Laplace's equation at each time step
@@ -177,7 +182,7 @@ for tstep_ind = 1:length(tvec)
     quiver(X,Z,Ex,Ez);
     plot3(x(shutter_x_inds), repmat(z(shutter_z_ind), size(shutter_x_inds)), repmat(500, size(shutter_x_inds)), 'k', 'LineWidth',2);
     plot3(x(sense_a_x_inds), repmat(z(sense_z_ind), size(sense_a_x_inds)), repmat(500, size(sense_a_x_inds)), 'r', 'LineWidth',2);
-    plot3(x(sense_b_x_inds), repmat(z(sense_z_ind), size(sense_b_x_inds)), repmat(500, size(sense_b_x_inds)), 'm', 'LineWidth',2);    
+    plot3(x(sense_b_x_inds), repmat(z(sense_z_ind), size(sense_b_x_inds)), repmat(500, size(sense_b_x_inds)), 'g', 'LineWidth',2);    
     plot3(x(gnd_x_inds), repmat(z(gnd_z_ind), size(gnd_x_inds)), repmat(500, size(gnd_x_inds)), 'k', 'LineWidth',2);
     
     xlim(movie_x_bounds);
@@ -211,8 +216,11 @@ for tstep_ind = 1:length(tvec)
     %             epsilon0.*( -V(sense_z_ind,sense_b_x_inds+1) + V(sense_z_ind,sense_b_x_inds-1) );
 
     % scale factor for plate area since only doing simulation in 2D
-    % Da_dot_ds = delta_xyz.*Da_dot_ds;
-    % Db_dot_ds = delta_xyz.*Db_dot_ds;
+    %  - depth integral becomes const multiplication factor (assuming 2D
+    %    cross sections at any depth will have the same developed charge 
+    %    distribution) 
+    Da_dot_ds = (plate_width/delta_xyz+1).*Da_dot_ds;
+    Db_dot_ds = (plate_width/delta_xyz+1).*Db_dot_ds;
 
     % integrate over the area of the plates to find the total charge
     Qa(tstep_ind) = sum(Da_dot_ds);
@@ -241,9 +249,9 @@ Vout_numerical = gain.*I_diff;
 
 % create plot for charge on the two plates as a function of time
 q_fig = figure; clf;
-plot(tvec, Qa*gain, 'DisplayName', 'Qa');
+plot(tvec, Qa*gain, 'DisplayName', 'Qa', LineWidth=2);
 hold on;
-plot(tvec, Qb*gain, 'DisplayName', 'Qb');
+plot(tvec, Qb*gain, 'DisplayName', 'Qb', LineWidth=2);
 
 xlabel("Time Step (t)");
 ylabel("Relative Charge (C)");
@@ -261,8 +269,8 @@ ylabel("Relative V_{out}");
 %% Analytical Solution for Amplifier Output
 vel = delta_xyz./delta_t;
 
-Vout_analytical = 2*vel*epsilon0*E * gain;
-% Vout_analytical = Vout_analytical * delta_xyz; % account for 2D simulation - depth factor for area
+Vout_analytical = -2*vel*epsilon0*E * gain;
+Vout_analytical = Vout_analytical * plate_width; % account for 2D simulation - depth factor for area
 Vout_analytical = movement .* Vout_analytical; % sign of Ib - Ia depends on movement direction of shutter
 
 % add analytical solution to voltage plot
