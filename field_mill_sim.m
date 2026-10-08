@@ -101,17 +101,22 @@ Qb_numerical = zeros(size(tvec));
 
 % store E-field at start and middle of shutter movement for comparison
 % against analytical assumptions
-
+save_time_ind = [1, (length(tvec)-1)/4+1, (length(tvec)-1)/2+1]; % left, center, right
+Ex_save = zeros([size(V), length(save_time_ind)]);
+Ez_save = zeros([size(V), length(save_time_ind)]);
+V_save = zeros([size(V), length(save_time_ind)]);
+shutter_save_ind = zeros(plate_width/delta_xyz+1, length(save_time_ind));
 
 
 % create figure for movie plot of voltage solution to Laplace's equation at each time step
 field_mill_movie_fig = figure; clf;
 if zoom_in_movie
-    plot_size = 1.5*plate_width;
-    movie_x_inds = find( abs(x-center_sim_space) <= plot_size + float_point_tol_indexing);
-    movie_z_inds = find( abs(z-center_sim_space) <= plot_size + float_point_tol_indexing);
+    plot_size = 2;
+    movie_x_inds = find( abs(x-center_sim_space) <= plot_size*plate_width + float_point_tol_indexing);
+    movie_z_inds = find( abs(z-center_sim_space) <= plot_size*plate_width + float_point_tol_indexing);
     movie_x_bounds = x([movie_x_inds(1), movie_x_inds(end)]);
     movie_z_bounds = z([movie_z_inds(1), movie_z_inds(end)]);
+    z_plot_bounds = [-0.04, 0.12];
 end
 
 tic
@@ -125,14 +130,6 @@ for tstep_ind = 1:length(tvec)
     % assume initial solution is uniform gradient for each shutter position
     % (iterate until Laplace's equation converges to within tolerance criteria)
     V = repmat((z.*E).', size(z,1), size(x,2));
-
-    % at t=0, assume initial voltage has gradient that is uniform in z
-    % across entire simulation space; otherwise, just start with solution
-    % from previous time step (should minimize convergence time) 
-    % -->  DOES NOT WORK FOR WHATEVER REASON
-    % if tstep_ind == 1
-    %     V = repmat((z.*E).', size(z,1), size(x,2));
-    % end
     
     % enforce boundary condition values at edges of simulation space
     % x is column, z is row
@@ -179,20 +176,24 @@ for tstep_ind = 1:length(tvec)
     [Ex, Ez] = gradient(-V, delta_xyz);
     Dx = epsilon0*Ex;
     Dz = epsilon0*Ez;
-    Da = Dz(sense_z_ind, sense_a_x_inds);
-    Db = Dz(sense_z_ind, sense_b_x_inds);
-    Da_dot_ds = Da * delta_xyz.^2;
-    Db_dot_ds = Db * delta_xyz.^2;
-
+    Daz = Dz(sense_z_ind, sense_a_x_inds);
+    Dbz = Dz(sense_z_ind, sense_b_x_inds);
+    Dax = Dx(sense_z_ind, sense_a_x_inds);
+    Dbx = Dx(sense_z_ind, sense_b_x_inds);
+    % Da_dot_ds = (Daz+Dax) * delta_xyz.^2;
+    % Db_dot_ds = (Dbz+Dbx) * delta_xyz.^2;
+    Da_dot_ds = Daz * delta_xyz.^2;
+    Db_dot_ds = Dbz * delta_xyz.^2;
 
     %-------------------------------------------------------------------
     % plot movie of scalar voltage as shutter moves back and forth
     figure(field_mill_movie_fig);
-    axis equal;
     % surf(X,Z,V);
-    V_level_diff = 20; % voltage difference between adjacent equipotential lines
+    V_level_diff = 5; % voltage difference between adjacent equipotential lines
     equiV_levels = lower_spatial_limit*E:V_level_diff:upper_spatial_limit*E;
     contour(X,Z,V,equiV_levels);
+    % axis equal;
+
     hold on;
     quiver(X,Z,Ex,Ez);
     plot3(x(shutter_x_inds), repmat(z(shutter_z_ind), size(shutter_x_inds)), repmat(500, size(shutter_x_inds)), 'k', 'LineWidth',2);
@@ -202,7 +203,7 @@ for tstep_ind = 1:length(tvec)
     
     if zoom_in_movie
         xlim(movie_x_bounds);
-        ylim(movie_z_bounds);
+        ylim(z_plot_bounds);
     end
     xlabel("x (m)");
     ylabel("z (m)");
@@ -224,7 +225,9 @@ for tstep_ind = 1:length(tvec)
     %             delta_xyz.*epsilon0.*( 2*V(sense_z_ind,sense_a_x_inds) - V(sense_z_ind,sense_a_x_inds+1) - V(sense_z_ind,sense_a_x_inds-1) );
     % Db_dot_ds = delta_xyz.*epsilon0.*( 2*V(sense_z_ind,sense_b_x_inds) - V(sense_z_ind+1,sense_b_x_inds) - V(sense_z_ind-1,sense_b_x_inds) ) + ...
     %             delta_xyz.*epsilon0.*( 2*V(sense_z_ind,sense_b_x_inds) - V(sense_z_ind,sense_b_x_inds+1) - V(sense_z_ind,sense_b_x_inds-1) );
-    
+    % Da_dot_ds = -Da_dot_ds./delta_xyz/4;
+    % Db_dot_ds = -Db_dot_ds./delta_xyz/4;
+
     % scale factor for plate area since only doing simulation in 2D
     %  - depth integral becomes const multiplication factor (assuming 2D
     %    cross sections at any depth will have the same developed charge 
@@ -236,6 +239,15 @@ for tstep_ind = 1:length(tvec)
     Qa_numerical(tstep_ind) = sum(Da_dot_ds);
     Qb_numerical(tstep_ind) = sum(Db_dot_ds);
 
+
+    % save variables for numerical comparison
+    save_ind = find(save_time_ind == tstep_ind);
+    if ~isempty(save_ind)
+        Ex_save(:,:,save_ind) = Ex;
+        Ez_save(:,:,save_ind) = Ez;
+        V_save(:,:,save_ind) = V;
+        shutter_save_ind(:,save_ind) = shutter_x_inds;
+    end
 
     % update start index of shutter for next iteration
     % assuming linear motion from one side to the next
@@ -261,9 +273,9 @@ Vout_numerical = gain.*I_diff_numerical;
 q_C2nC_factor = 1e9;
 if plot_charge
     q_numerical_fig = figure; clf;
-    plot(tvec, Qa_numerical*q_C2nC_factor, 'DisplayName', 'Qa', LineWidth=2);
+    plot(tvec, Qa_numerical*q_C2nC_factor, 'DisplayName', 'Qa Numerical', LineWidth=2);
     hold on;
-    plot(tvec, Qb_numerical*q_C2nC_factor, 'DisplayName', 'Qb', LineWidth=2);
+    plot(tvec, Qb_numerical*q_C2nC_factor, 'DisplayName', 'Qb Numerical', LineWidth=2);
     
     xlabel("Time Step (s)");
     ylabel("Total Charge (nC)");
@@ -347,6 +359,14 @@ if plot_analytical
 end
 
 
+if plot_charge
+    figure(q_numerical_fig);
+    plot(tvec, Qa_analytical*q_C2nC_factor, '--', 'DisplayName', 'Qa Analytical', LineWidth=2);
+    hold on;
+    plot(tvec, Qb_analytical*q_C2nC_factor, '--', 'DisplayName', 'Qb Analytical', LineWidth=2);
+    legend('Location', 'best')
+end
+
 if plot_voltage_out
     figure(vout_numerical_fig);
     plot(tvec(1:end-1), Vout_analytical, '--', 'DisplayName','Analytical', 'LineWidth',2);
@@ -354,7 +374,58 @@ if plot_voltage_out
 end
 
 %% Comparison
+save_path = fullfile(fileparts(which(mfilename)), "Figures");
+mkdir(save_path);
 
-residualEz = Ez - E;
+residual_E_quiver_start_plot = figure; clf;
+percent_error_Ez_plot = figure; clf;
 
-% residual_E_quiver
+for save_ind = 1:length(save_time_ind)
+    figure(residual_E_quiver_start_plot);
+
+    analytical_E = -E*ones(size(V));
+    shutter_x_inds = shutter_save_ind(:,save_ind);
+    analytical_E(gnd_z_ind+1:shutter_z_ind-1, shutter_x_inds) = 0;
+    resid_Ez = Ez_save(:,:,save_ind) - (analytical_E);
+    resid_Ex = Ex_save(:,:,save_ind);
+
+    quiver(X,Z,resid_Ex,resid_Ez);
+    hold on;
+    plot3(x(shutter_x_inds), repmat(z(shutter_z_ind), size(shutter_x_inds)), repmat(500, size(shutter_x_inds)), 'k', 'LineWidth',2);
+    plot3(x(sense_a_x_inds), repmat(z(sense_z_ind), size(sense_a_x_inds)), repmat(500, size(sense_a_x_inds)), 'r', 'LineWidth',2);
+    plot3(x(sense_b_x_inds), repmat(z(sense_z_ind), size(sense_b_x_inds)), repmat(500, size(sense_b_x_inds)), 'g', 'LineWidth',2);    
+    plot3(x(gnd_x_inds), repmat(z(gnd_z_ind), size(gnd_x_inds)), repmat(500, size(gnd_x_inds)), 'k', 'LineWidth',2);
+    hold off;
+    if zoom_in_movie
+        xlim(movie_x_bounds/plot_size*1.5);
+        ylim(z_plot_bounds);
+    end
+    xlabel("x (m)");
+    ylabel("z (m)");
+    title("Residual E-Field (Numerical-Analytical)");
+
+    saveas(gcf, fullfile(save_path, "residE_quiver"+num2str(save_ind)+".pdf"));
+
+
+    % plot percent error for Ez along sense plates
+    figure(percent_error_Ez_plot);
+
+    % |(estimate - actual)| / actual
+    percent_error_Ez = resid_Ez ./ Ez_save(:,:,save_ind) .* 100;
+    % percent_error_Ez = resid_Ez ./ analytical_E .* 100;
+
+    shutter_pos_logical = ismember(sense_x_inds, shutter_x_inds);
+    shutter_pos = zeros(size(shutter_pos_logical));
+    shutter_pos(~shutter_pos_logical) = nan; 
+    plot(x(sense_x_inds), percent_error_Ez(sense_z_ind, sense_x_inds), 'DisplayName', 'Ez % Error');
+    hold on;
+    plot(x(sense_x_inds), shutter_pos, '--', 'DisplayName', 'Shutter Position')
+    hold off;
+    ylim([-100 100]);
+    legend('Location','best');
+    xlabel("x (m)");
+    ylabel("% Error");
+    title("% Error in Ez along Sense Plates");
+
+    saveas(gcf, fullfile(save_path, "Ez_percentError"+num2str(save_ind)+".pdf"));
+end
